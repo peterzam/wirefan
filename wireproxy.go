@@ -22,6 +22,7 @@ import (
 type DeviceSetting struct {
 	ipcRequest string
 	dns        []netip.Addr
+	mtu        int
 	deviceAddr *netip.Addr
 }
 
@@ -86,6 +87,7 @@ func createIPCRequest(config_path string) (*DeviceSetting, error) {
 	if err != nil {
 		return nil, err
 	}
+	mtu := cfg.Section("Interface").Key("MTU").MustInt(1420)
 
 	pubKey, err := parseBase64Key(cfg.Section("Peer").Key("PublicKey").String())
 	if err != nil {
@@ -97,18 +99,9 @@ func createIPCRequest(config_path string) (*DeviceSetting, error) {
 		return nil, err
 	}
 
-	keepAlive := cfg.Section("Peer").Key("PersistentKeepalive").MustInt64()
+	keepAlive := cfg.Section("Peer").Key("PersistentKeepalive").MustInt64(0)
 
-	var preSharedKey string
-	preSharedKeyOpt := cfg.Section("Peer").Key("PresharedKey").String()
-	if preSharedKeyOpt == "" {
-		preSharedKey = "0000000000000000000000000000000000000000000000000000000000000000"
-	} else {
-		preSharedKey, err = parseBase64Key(preSharedKeyOpt)
-		if err != nil {
-			return nil, err
-		}
-	}
+	preSharedKey := cfg.Section("Peer").Key("PresharedKey").MustString(strings.Repeat("0", 64))
 
 	allowed_ip := cfg.Section("Peer").Key("AllowedIPs").String()
 	if allowed_ip == "" {
@@ -122,34 +115,30 @@ persistent_keepalive_interval=%d
 preshared_key=%s
 allowed_ip=%s`, prvKey, pubKey, endpoint, keepAlive, preSharedKey, allowed_ip)
 
-	setting := &DeviceSetting{ipcRequest: request, dns: dns, deviceAddr: &address}
+	setting := &DeviceSetting{ipcRequest: request, dns: dns, mtu: mtu, deviceAddr: &address}
 	return setting, nil
 }
 
-func socks5Routine(bindAddr string) (func(*netstack.Net), error) {
-	routine := func(tnet *netstack.Net) {
-		conf := &socks5.Config{Dial: tnet.DialContext}
-		server, err := socks5.New(conf)
-		if err != nil {
-			log.Panic(err)
-		}
-
-		if err := server.ListenAndServe("tcp", bindAddr); err != nil {
-			log.Panic(err)
-		}
+func startSocks5Server(bindAddr string, tnet *netstack.Net) error {
+	server, err := socks5.New(&socks5.Config{Dial: tnet.DialContext})
+	if err != nil {
+		log.Panic(err)
 	}
-	return routine, nil
+
+	if err := server.ListenAndServe("tcp", bindAddr); err != nil {
+		log.Panic(err)
+	}
+	return nil
 }
 
-func startWireguard(setting *DeviceSetting) (*netstack.Net, error) {
-	tun, tnet, err := netstack.CreateNetTUN([]netip.Addr{*(setting.deviceAddr)}, setting.dns, 1420)
+func startWireguardClient(setting *DeviceSetting) (*netstack.Net, error) {
+	tun, tnet, err := netstack.CreateNetTUN([]netip.Addr{*(setting.deviceAddr)}, setting.dns, setting.mtu)
 	if err != nil {
 		return nil, err
 	}
 	dev := device.NewDevice(tun, conn.NewDefaultBind(), device.NewLogger(device.LogLevelVerbose, ""))
 	dev.IpcSet(setting.ipcRequest)
-	err = dev.Up()
-	if err != nil {
+	if err = dev.Up(); err != nil {
 		return nil, err
 	}
 
@@ -173,13 +162,13 @@ func main() {
 		log.Panic(err)
 	}
 
-	var stack func(*netstack.Net)
-
-	stack, err = socks5Routine(*bindAddr)
-
-	tnet, err := startWireguard(setting)
+	tnet, err := startWireguardClient(setting)
 	if err != nil {
 		log.Panic(err)
 	}
-	stack(tnet)
+
+	err = startSocks5Server(*bindAddr, tnet)
+	if err != nil {
+		log.Panic(err)
+	}
 }
