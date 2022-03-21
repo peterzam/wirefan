@@ -19,5 +19,10 @@ anything.
 # Usage
 `./wireproxy --wg-conf=<wireguard_config_file_path> --bind=<bind_address>`
 
+
+# Known Issues
+- [ ] DNS is not working properly
+- [ ] IPv6 is not supported
+
 # Note
 Port forwarding function is dropped. If you want to use, check the origin repo at github.com/octeep/wireproxy.git
