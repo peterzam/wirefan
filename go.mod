@@ -7,6 +7,7 @@ require (
 	golang.zx2c4.com/go118/netip v0.0.0-20211111135330-a4a02eeacf9d
 	golang.zx2c4.com/wireguard v0.0.0-20220202223031-3b95c81cc178
 	golang.zx2c4.com/wireguard/tun/netstack v0.0.0-20220310012736-ae6bc4dd64e1
+	gopkg.in/ini.v1 v1.66.4
 )
 
 require (
