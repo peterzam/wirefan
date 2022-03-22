@@ -67,12 +67,7 @@ func parseIPs(s string) ([]netip.Addr, error) {
 	return ips, nil
 }
 
-func createIPCRequest(config_path string) (*DeviceSetting, error) {
-	cfg, err := ini.Load(config_path)
-	if err != nil {
-		return nil, err
-	}
-
+func createIPCRequest(cfg *ini.File) (*DeviceSetting, error) {
 	prvKey, err := parseBase64Key(cfg.Section("Interface").Key("PrivateKey").String())
 	if err != nil {
 		return nil, err
@@ -120,7 +115,16 @@ allowed_ip=%s`, prvKey, pubKey, endpoint, keepAlive, preSharedKey, allowed_ip)
 }
 
 func startSocks5Server(bindAddr string, tnet *netstack.Net) error {
-	server, err := socks5.New(&socks5.Config{Dial: tnet.DialContext})
+	socks5conf := &socks5.Config{Dial: tnet.DialContext}
+	if *user+*pass != "" {
+		creds := socks5.StaticCredentials{
+			*user: *pass,
+		}
+		cator := socks5.UserPassAuthenticator{Credentials: creds}
+		socks5conf.AuthMethods = []socks5.Authenticator{cator}
+	}
+
+	server, err := socks5.New(socks5conf)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -148,6 +152,8 @@ func startWireguardClient(setting *DeviceSetting) (*netstack.Net, error) {
 var (
 	bindAddr     = flag.String("bind", "127.0.0.1:1080", "Bind Address for SOCKS5")
 	wg_conf_path = flag.String("wg-conf", "", "Wireguard config file path")
+	user         = flag.String("user", "", "SOCKS5 Username")
+	pass         = flag.String("pass", "", "SOCKS5 Password")
 )
 
 func main() {
@@ -157,7 +163,12 @@ func main() {
 		return
 	}
 
-	setting, err := createIPCRequest(*wg_conf_path)
+	cfg, err := ini.Load(*wg_conf_path)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	setting, err := createIPCRequest(cfg)
 	if err != nil {
 		log.Panic(err)
 	}
