@@ -17,12 +17,24 @@ wireproxy is completely isolated from my network interfaces, also I don't need r
 anything.
 
 # Usage
-`./wireproxy --wg-conf=<wireguard_config_file_path> --bind=<bind_address>`
 
+## CLI
+```
+./wireproxy --wg-conf=<wireguard_config_file_path> --bind=<bind_address> --user=<username> --pass=<password>
+```
 
-# Known Issues
-- [ ] DNS is not working properly
-- [ ] IPv6 is not supported
+## Docker 
+```bash
+# Clone wireproxy repo and cd into repo
+git clone https://codeberg.org/peterzam/wireproxy.git
 
+cd wireproxy
+
+# Build Docker Image
+docker build -t peterzam/wireproxy .
+
+# Run Docker Container
+docker run -d -v $PWD/<wireguard_config_file_path>:/wg.conf -p 1080:1080 peterzam/wireproxy --user=<username> --pass=<password>
+```
 # Note
 Port forwarding function is dropped. If you want to use, check the origin repo at github.com/octeep/wireproxy.git
