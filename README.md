@@ -34,7 +34,7 @@ cd wireproxy
 docker build -t peterzam/wireproxy .
 
 # Run Docker Container
-docker run -d -v $PWD/<wireguard_config_file_path>:/wg.conf -p 1080:1080 peterzam/wireproxy --user=<username> --pass=<password>
+docker run -d -v <wireguard_config_file_path>:/wg.conf -p 1080:1080 peterzam/wireproxy --user=<username> --pass=<password>
 ```
 # Note
 Port forwarding function is dropped. If you want to use, check the origin repo at github.com/octeep/wireproxy.git

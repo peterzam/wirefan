@@ -1,4 +1,4 @@
-module github.com/octeep/wireproxy
+module codeberg.org/peterzam/wireproxy
 
 go 1.18
 
