@@ -23,7 +23,7 @@ type DeviceSetting struct {
 	ipcRequest string
 	dns        []netip.Addr
 	mtu        int
-	deviceAddr *netip.Addr
+	deviceAddr *[]netip.Addr
 }
 
 func parseBase64Key(key string) (string, error) {
@@ -58,13 +58,35 @@ func parseIPs(s string) ([]netip.Addr, error) {
 	ips := []netip.Addr{}
 	for _, str := range strings.Split(s, ",") {
 		str = strings.TrimSpace(str)
-		ip, err := netip.ParseAddr(str)
-		if err != nil {
-			return nil, err
+		if strings.Contains(str, "/") {
+			cidrAddr, _, err := net.ParseCIDR(str)
+			if err != nil {
+				return nil, err
+			}
+			ipAddr, err := netip.ParseAddr(cidrAddr.String())
+			if err != nil {
+				return nil, err
+			}
+			ips = append(ips, ipAddr)
+		} else {
+			ipAddr, err := netip.ParseAddr(str)
+			if err != nil {
+				return nil, err
+			}
+			ips = append(ips, ipAddr)
 		}
-		ips = append(ips, ip)
 	}
 	return ips, nil
+}
+
+func addAllowIPs(s string) string {
+	var str string
+	ips := strings.Split(s, ",")
+	for _, ip := range ips {
+		str = str + fmt.Sprintf(`allowed_ip=%s
+`, ip)
+	}
+	return str
 }
 
 func createIPCRequest(cfg *ini.File) (*DeviceSetting, error) {
@@ -73,7 +95,7 @@ func createIPCRequest(cfg *ini.File) (*DeviceSetting, error) {
 		return nil, err
 	}
 
-	address, err := netip.ParseAddr(strings.Split(cfg.Section("Interface").Key("Address").String(), "/")[0])
+	address, err := parseIPs(cfg.Section("Interface").Key("Address").String())
 	if err != nil {
 		return nil, err
 	}
@@ -98,17 +120,14 @@ func createIPCRequest(cfg *ini.File) (*DeviceSetting, error) {
 
 	preSharedKey := cfg.Section("Peer").Key("PresharedKey").MustString(strings.Repeat("0", 64))
 
-	allowed_ip := cfg.Section("Peer").Key("AllowedIPs").String()
-	if allowed_ip == "" {
-		allowed_ip = "0.0.0.0/0"
-	}
+	allowed_ip := addAllowIPs(cfg.Section("Peer").Key("AllowedIPs").MustString("0.0.0.0/0"))
 
 	request := fmt.Sprintf(`private_key=%s
 public_key=%s
 endpoint=%s
 persistent_keepalive_interval=%d
 preshared_key=%s
-allowed_ip=%s`, prvKey, pubKey, endpoint, keepAlive, preSharedKey, allowed_ip)
+%s`, prvKey, pubKey, endpoint, keepAlive, preSharedKey, allowed_ip)
 
 	setting := &DeviceSetting{ipcRequest: request, dns: dns, mtu: mtu, deviceAddr: &address}
 	return setting, nil
@@ -136,7 +155,7 @@ func startSocks5Server(bindAddr string, tnet *netstack.Net) error {
 }
 
 func startWireguardClient(setting *DeviceSetting) (*netstack.Net, error) {
-	tun, tnet, err := netstack.CreateNetTUN([]netip.Addr{*(setting.deviceAddr)}, setting.dns, setting.mtu)
+	tun, tnet, err := netstack.CreateNetTUN(*(setting.deviceAddr), setting.dns, setting.mtu)
 	if err != nil {
 		return nil, err
 	}
