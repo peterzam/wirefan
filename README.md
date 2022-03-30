@@ -1,6 +1,8 @@
 # wireproxy
 Wireguard client that exposes itself as a socks5 proxy or tunnels. This is a fork of github.com/octeep/wireproxy.git
 
+This software only support SOCKS5 proxy. If you want to use HTTP proxy, convert SOCKS5 to HTTP with [socks2http](https://codeberg.org/peterzam/socks2http) 
+
 # What is this
 wireproxy is a completely userspace application that connects to a wireguard peer,
 and exposes a socks5 proxy or tunnels on the machine. This can be useful if you need
