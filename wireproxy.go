@@ -10,7 +10,8 @@ import (
 	"net"
 	"strings"
 
-	"github.com/armon/go-socks5"
+	// "github.com/armon/go-socks5"
+	"codeberg.org/peterzam/wireproxy/socks5"
 	"gopkg.in/ini.v1"
 
 	"golang.zx2c4.com/go118/netip"
@@ -134,18 +135,11 @@ preshared_key=%s
 }
 
 func startSocks5Server(bindAddr string, tnet *netstack.Net) error {
-	socks5conf := &socks5.Config{Dial: tnet.DialContext}
-	if *user+*pass != "" {
-		creds := socks5.StaticCredentials{
-			*user: *pass,
-		}
-		cator := socks5.UserPassAuthenticator{Credentials: creds}
-		socks5conf.AuthMethods = []socks5.Authenticator{cator}
+	server := &socks5.Server{
+		ProxyDial: tnet.DialContext,
 	}
-
-	server, err := socks5.New(socks5conf)
-	if err != nil {
-		log.Panic(err)
+	if *user != "" {
+		server.Authentication = socks5.UserAuth(*user, *pass)
 	}
 
 	if err := server.ListenAndServe("tcp", bindAddr); err != nil {
