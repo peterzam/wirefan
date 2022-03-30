@@ -3,7 +3,6 @@ module codeberg.org/peterzam/wireproxy
 go 1.18
 
 require (
-	github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5
 	golang.zx2c4.com/go118/netip v0.0.0-20211111135330-a4a02eeacf9d
 	golang.zx2c4.com/wireguard v0.0.0-20220202223031-3b95c81cc178
 	golang.zx2c4.com/wireguard/tun/netstack v0.0.0-20220310012736-ae6bc4dd64e1
