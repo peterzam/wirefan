@@ -1,4 +1,4 @@
-module codeberg.org/peterzam/wireproxy
+module codeberg.org/peterzam/wirefan
 
 go 1.18
 

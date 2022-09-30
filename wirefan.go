@@ -175,6 +175,7 @@ func startWireguardClient(setting *DeviceSetting) (*netstack.Net, error) {
 var (
 	bindAddr     = flag.String("bind", "0.0.0.0:1080", "Bind Address for SOCKS5")
 	wg_conf_path = flag.String("wg-conf", "", "Wireguard config file path")
+	csvfilepath  = flag.String("csv", "socks.csv", "SOCKS5 server list csv file")
 	user         = flag.String("user", "", "SOCKS5 Username")
 	pass         = flag.String("pass", "", "SOCKS5 Password")
 )
