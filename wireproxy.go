@@ -130,6 +130,16 @@ allowed_ip=0.0.0.0/0
 
 func startSocks5Server(bindAddr string, tnet *netstack.Net) error {
 
+	var auth []socks5.Authenticator = nil
+
+	if *user != "" {
+		auth = []socks5.Authenticator{socks5.UserPassAuthenticator{
+			Credentials: socks5.StaticCredentials{
+				*user: *pass,
+			},
+		}}
+	}
+
 	server, _ := socks5.New(&socks5.Config{
 		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			return tnet.Dial(network, bindAddr)
