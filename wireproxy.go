@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -10,11 +11,12 @@ import (
 	"net"
 	"strings"
 
-	// "github.com/armon/go-socks5"
-	"codeberg.org/peterzam/wireproxy/socks5"
+	// "codeberg.org/peterzam/wireproxy/socks5"
+	"codeberg.org/peterzam/socks5"
 	"gopkg.in/ini.v1"
 
-	"golang.zx2c4.com/go118/netip"
+	"net/netip"
+
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun/netstack"
@@ -135,16 +137,22 @@ preshared_key=%s
 }
 
 func startSocks5Server(bindAddr string, tnet *netstack.Net) error {
-	server := &socks5.Server{
-		ProxyDial: tnet.DialContext,
-	}
-	if *user != "" {
-		server.Authentication = socks5.UserAuth(*user, *pass)
-	}
+
+	server, _ := socks5.New(&socks5.Config{
+		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return tnet.Dial(network, bindAddr)
+		},
+		AuthMethods: []socks5.Authenticator{socks5.UserPassAuthenticator{
+			Credentials: socks5.StaticCredentials{
+				*user: *pass,
+			},
+		}},
+	})
 
 	if err := server.ListenAndServe("tcp", bindAddr); err != nil {
-		log.Panic(err)
+		panic(err)
 	}
+
 	return nil
 }
 
@@ -154,7 +162,11 @@ func startWireguardClient(setting *DeviceSetting) (*netstack.Net, error) {
 		return nil, err
 	}
 	dev := device.NewDevice(tun, conn.NewDefaultBind(), device.NewLogger(device.LogLevelVerbose, ""))
-	dev.IpcSet(setting.ipcRequest)
+	err = dev.IpcSet(setting.ipcRequest)
+	if err != nil {
+		return nil, err
+	}
+
 	if err = dev.Up(); err != nil {
 		return nil, err
 	}
