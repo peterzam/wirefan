@@ -82,16 +82,6 @@ func parseIPs(s string) ([]netip.Addr, error) {
 	return ips, nil
 }
 
-func addAllowIPs(s string) string {
-	var str string
-	ips := strings.Split(s, ",")
-	for _, ip := range ips {
-		str = str + fmt.Sprintf(`allowed_ip=%s
-`, ip)
-	}
-	return str
-}
-
 func createIPCRequest(cfg *ini.File) (*DeviceSetting, error) {
 	prvKey, err := parseBase64Key(cfg.Section("Interface").Key("PrivateKey").String())
 	if err != nil {
@@ -121,16 +111,18 @@ func createIPCRequest(cfg *ini.File) (*DeviceSetting, error) {
 
 	keepAlive := cfg.Section("Peer").Key("PersistentKeepalive").MustInt64(0)
 
-	preSharedKey := cfg.Section("Peer").Key("PresharedKey").MustString(strings.Repeat("0", 64))
-
-	allowed_ip := addAllowIPs(cfg.Section("Peer").Key("AllowedIPs").MustString("0.0.0.0/0"))
+	preSharedKey, err := parseBase64Key(cfg.Section("Peer").Key("PresharedKey").MustString(strings.Repeat("0", 64)))
+	if err != nil {
+		return nil, err
+	}
 
 	request := fmt.Sprintf(`private_key=%s
 public_key=%s
 endpoint=%s
 persistent_keepalive_interval=%d
 preshared_key=%s
-%s`, prvKey, pubKey, endpoint, keepAlive, preSharedKey, allowed_ip)
+allowed_ip=0.0.0.0/0
+`, prvKey, pubKey, endpoint, keepAlive, preSharedKey)
 
 	setting := &DeviceSetting{ipcRequest: request, dns: dns, mtu: mtu, deviceAddr: &address}
 	return setting, nil
@@ -175,7 +167,7 @@ func startWireguardClient(setting *DeviceSetting) (*netstack.Net, error) {
 }
 
 var (
-	bindAddr     = flag.String("bind", "127.0.0.1:1080", "Bind Address for SOCKS5")
+	bindAddr     = flag.String("bind", "0.0.0.0:1080", "Bind Address for SOCKS5")
 	wg_conf_path = flag.String("wg-conf", "", "Wireguard config file path")
 	user         = flag.String("user", "", "SOCKS5 Username")
 	pass         = flag.String("pass", "", "SOCKS5 Password")
