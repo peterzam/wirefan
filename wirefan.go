@@ -148,9 +148,11 @@ func startSocks5Server(bindAddr string, tnet *netstack.Net) error {
 	})
 
 	if err := server.ListenAndServe("tcp", bindAddr); err != nil {
+		fmt.Println("----------------")
+		fmt.Println("SOCKS5 server cannot be started at : ", bindAddr)
+		fmt.Println("----------------")
 		panic(err)
 	}
-
 	return nil
 }
 
