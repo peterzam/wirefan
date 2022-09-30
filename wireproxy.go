@@ -142,13 +142,9 @@ func startSocks5Server(bindAddr string, tnet *netstack.Net) error {
 
 	server, _ := socks5.New(&socks5.Config{
 		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return tnet.Dial(network, bindAddr)
+			return tnet.DialContext(ctx, network, addr)
 		},
-		AuthMethods: []socks5.Authenticator{socks5.UserPassAuthenticator{
-			Credentials: socks5.StaticCredentials{
-				*user: *pass,
-			},
-		}},
+		AuthMethods: auth,
 	})
 
 	if err := server.ListenAndServe("tcp", bindAddr); err != nil {
