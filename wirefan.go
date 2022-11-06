@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/hex"
@@ -8,11 +9,14 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
+	"os"
 	"strings"
 
 	// "codeberg.org/peterzam/wireproxy/socks5"
 	"codeberg.org/peterzam/socks5"
+	"golang.org/x/net/proxy"
 	"gopkg.in/ini.v1"
 
 	"net/netip"
@@ -151,7 +155,7 @@ func startSocks5Server(bindAddr string, tnet *netstack.Net) error {
 		fmt.Println("----------------")
 		fmt.Println("SOCKS5 server cannot be started at : ", bindAddr)
 		fmt.Println("----------------")
-		panic(err)
+		panic("err")
 	}
 	return nil
 }
@@ -204,8 +208,44 @@ func main() {
 		log.Panic(err)
 	}
 
-	err = startSocks5Server(*bindAddr, tnet)
+	go func() {
+		err = startSocks5Server("0.0.0.0:2080", tnet)
+		if err != nil {
+			log.Panic(err)
+		}
+
+	}()
+	// Start here
+	var t []proxy.Dialer
+	f, err := os.ReadFile(*csvfilepath)
 	if err != nil {
-		log.Panic(err)
+		fmt.Println("----------------")
+		fmt.Println("CSV file read error")
+		fmt.Println("----------------")
+		panic(err)
+	}
+	sockstrings := bytes.Split(f, []byte("\n"))
+
+	middle, _ := proxy.SOCKS5("tcp", "127.0.0.1:2080", &proxy.Auth{}, proxy.Direct)
+
+	for _, i := range sockstrings {
+		j, _ := proxy.SOCKS5("tcp", string(i), &proxy.Auth{}, middle)
+		t = append(t, j)
+	}
+
+	var i int
+	server, _ := socks5.New(&socks5.Config{
+		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			if ctx.Done() == nil {
+				i = rand.Intn(len(t))
+			}
+			return t[i].Dial(network, addr)
+		},
+	})
+	if err := server.ListenAndServe("tcp", *bindAddr); err != nil {
+		fmt.Println("----------------")
+		fmt.Println("SOCKS5 server cannot be started at : ", *bindAddr)
+		fmt.Println("----------------")
+		panic(err)
 	}
 }
