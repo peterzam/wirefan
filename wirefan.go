@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -14,7 +13,6 @@ import (
 	"os"
 	"strings"
 
-	// "codeberg.org/peterzam/wireproxy/socks5"
 	"codeberg.org/peterzam/socks5"
 	"golang.org/x/net/proxy"
 	"gopkg.in/ini.v1"
@@ -27,119 +25,120 @@ import (
 )
 
 type DeviceSetting struct {
-	ipcRequest string
-	dns        []netip.Addr
-	mtu        int
-	deviceAddr *[]netip.Addr
+	IpcRequest    string
+	Dns           []netip.Addr
+	Mtu           int
+	DeviceAddress *[]netip.Addr
 }
 
-func parseBase64Key(key string) (string, error) {
+func ParseBase64Key(key string) string {
+
 	decoded, err := base64.StdEncoding.DecodeString(key)
 	if err != nil {
-		return "", errors.New("invalid base64 string")
+		log.Println("--- Invalid base64 string ---")
+		log.Fatal(err)
 	}
 	if len(decoded) != 32 {
-		return "", errors.New("key should be 32 bytes")
+		log.Println("--- Key should be 32 bytes ---")
+		log.Fatal(err)
 	}
-	return hex.EncodeToString(decoded), nil
+
+	return hex.EncodeToString(decoded)
 }
 
-func resolveIP(ip string) (*net.IPAddr, error) {
-	return net.ResolveIPAddr("ip", ip)
-}
-
-func resolveIPPAndPort(addr string) (string, error) {
-	host, port, err := net.SplitHostPort(addr)
+func ResolveIPAndPort(address string) string {
+	host, port, err := net.SplitHostPort(address)
 	if err != nil {
-		return "", err
+		log.Println("--- Cannot split address and port ---")
+		log.Fatal(err)
 	}
 
-	ip, err := resolveIP(host)
+	ip, err := net.ResolveIPAddr("ip", host)
 	if err != nil {
-		return "", err
+		log.Println("--- Cannot resolve address ---")
+		log.Fatal(err)
 	}
-	return net.JoinHostPort(ip.String(), port), nil
+	return net.JoinHostPort(ip.String(), port)
 }
 
-func parseIPs(s string) ([]netip.Addr, error) {
+func ParseIPs(s string) []netip.Addr {
 	ips := []netip.Addr{}
 	for _, str := range strings.Split(s, ",") {
 		str = strings.TrimSpace(str)
 		if strings.Contains(str, "/") {
 			cidrAddr, _, err := net.ParseCIDR(str)
 			if err != nil {
-				return nil, err
+				log.Println("--- Cannot parse IP CIDR ---")
+				log.Fatal(err)
 			}
 			ipAddr, err := netip.ParseAddr(cidrAddr.String())
 			if err != nil {
-				return nil, err
+				log.Println("--- Cannot parse CIDR address ---")
+				log.Fatal(err)
 			}
 			ips = append(ips, ipAddr)
 		} else {
 			ipAddr, err := netip.ParseAddr(str)
 			if err != nil {
-				return nil, err
+				log.Println("--- Cannot parse IP address ---")
+				log.Fatal(err)
 			}
 			ips = append(ips, ipAddr)
 		}
 	}
-	return ips, nil
+	return ips
 }
 
-func createIPCRequest(cfg *ini.File) (*DeviceSetting, error) {
-	prvKey, err := parseBase64Key(cfg.Section("Interface").Key("PrivateKey").String())
-	if err != nil {
-		return nil, err
-	}
+func CreateIPCRequest(cfg *ini.File) *DeviceSetting {
 
-	address, err := parseIPs(cfg.Section("Interface").Key("Address").String())
-	if err != nil {
-		return nil, err
-	}
-
-	dns, err := parseIPs(cfg.Section("Interface").Key("DNS").String())
-	if err != nil {
-		return nil, err
-	}
+	private_key := ParseBase64Key(cfg.Section("Interface").Key("PrivateKey").String())
+	address := ParseIPs(cfg.Section("Interface").Key("Address").String())
+	dns := ParseIPs(cfg.Section("Interface").Key("DNS").String())
 	mtu := cfg.Section("Interface").Key("MTU").MustInt(1420)
+	public_key := ParseBase64Key(cfg.Section("Peer").Key("PublicKey").String())
+	endpoint := ResolveIPAndPort(cfg.Section("Peer").Key("Endpoint").String())
+	keep_alive := cfg.Section("Peer").Key("PersistentKeepalive").MustInt64(0)
 
-	pubKey, err := parseBase64Key(cfg.Section("Peer").Key("PublicKey").String())
-	if err != nil {
-		return nil, err
-	}
-
-	endpoint, err := resolveIPPAndPort(cfg.Section("Peer").Key("Endpoint").String())
-	if err != nil {
-		return nil, err
-	}
-
-	keepAlive := cfg.Section("Peer").Key("PersistentKeepalive").MustInt64(0)
-
-	var preSharedKey = cfg.Section("Peer").Key("PresharedKey").String()
-	if preSharedKey == "" {
-		preSharedKey = strings.Repeat("0", 64)
+	pre_shared_key := cfg.Section("Peer").Key("PresharedKey").String()
+	if pre_shared_key == "" {
+		pre_shared_key = strings.Repeat("0", 64)
 	} else {
-		preSharedKey, err = parseBase64Key(preSharedKey)
-		if err != nil {
-			return nil, err
-		}
+		pre_shared_key = ParseBase64Key(pre_shared_key)
 	}
-
 	request := fmt.Sprintf(`private_key=%s
 public_key=%s
 endpoint=%s
 persistent_keepalive_interval=%d
 preshared_key=%s
 allowed_ip=0.0.0.0/0
-`, prvKey, pubKey, endpoint, keepAlive, preSharedKey)
-
-	setting := &DeviceSetting{ipcRequest: request, dns: dns, mtu: mtu, deviceAddr: &address}
-	return setting, nil
+`, private_key, public_key, endpoint, keep_alive, pre_shared_key)
+	setting := &DeviceSetting{IpcRequest: request, Dns: dns, Mtu: mtu, DeviceAddress: &address}
+	return setting
 }
 
-func startSocks5Server(bindAddr string, tnet *netstack.Net) error {
+func StartWireguardClient(setting *DeviceSetting) *netstack.Net {
+	tun, tnet, err := netstack.CreateNetTUN(*(setting.DeviceAddress), setting.Dns, setting.Mtu)
+	if err != nil {
+		log.Println("--- Cannot create TUN network ---")
+		log.Fatal(err)
+	}
 
-	var auth []socks5.Authenticator = nil
+	dev := device.NewDevice(tun, conn.NewDefaultBind(), device.NewLogger(device.LogLevelError, ""))
+	err = dev.IpcSet(setting.IpcRequest)
+	if err != nil {
+		log.Println("--- Cannot set IPC ---")
+		log.Fatal(err)
+	}
+
+	if err = dev.Up(); err != nil {
+		log.Println("--- Cannot start/up wg device ---")
+		log.Fatal(err)
+	}
+	return tnet
+}
+
+func StartSocksServer(server_address string, tnet *netstack.Net) {
+	var auth []socks5.Authenticator
 
 	if *user != "" {
 		auth = []socks5.Authenticator{socks5.UserPassAuthenticator{
@@ -149,92 +148,66 @@ func startSocks5Server(bindAddr string, tnet *netstack.Net) error {
 		}}
 	}
 
-	server, _ := socks5.New(&socks5.Config{
-		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return tnet.DialContext(ctx, network, addr)
-		},
+	server, err := socks5.New(&socks5.Config{
 		AuthMethods: auth,
 	})
-
-	if err := server.ListenAndServe("tcp", bindAddr); err != nil {
-		fmt.Println("----------------")
-		fmt.Println("SOCKS5 server cannot be started at : ", bindAddr)
-		fmt.Println("----------------")
-		panic("err")
+	if err != nil {
+		log.Fatal(err)
 	}
-	return nil
+	if tnet != nil {
+		server, _ = socks5.New(&socks5.Config{
+			Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				return tnet.DialContext(ctx, network, addr)
+			},
+			AuthMethods: auth,
+		})
+	}
+
+	if err := server.ListenAndServe("tcp", server_address); err != nil {
+		log.Printf("--- SOCKS5 server cannot be started at : %s ---", server_address)
+		log.Fatal(err)
+	}
 }
 
-func startWireguardClient(setting *DeviceSetting) (*netstack.Net, error) {
-	tun, tnet, err := netstack.CreateNetTUN(*(setting.deviceAddr), setting.dns, setting.mtu)
-	if err != nil {
-		return nil, err
-	}
-	dev := device.NewDevice(tun, conn.NewDefaultBind(), device.NewLogger(device.LogLevelVerbose, ""))
-	err = dev.IpcSet(setting.ipcRequest)
-	if err != nil {
-		return nil, err
-	}
-
-	if err = dev.Up(); err != nil {
-		return nil, err
-	}
-
-	return tnet, nil
-}
-
-var (
-	bindAddr     = flag.String("bind", "0.0.0.0:1080", "Bind Address for SOCKS5")
-	wg_conf_path = flag.String("wg-conf", "", "Wireguard config file path")
-	csvfilepath  = flag.String("csv", "socks.csv", "SOCKS5 server list csv file")
-	user         = flag.String("user", "", "SOCKS5 Username")
-	pass         = flag.String("pass", "", "SOCKS5 Password")
-)
-
-func main() {
-	flag.Parse()
-	if len(*wg_conf_path) == 0 {
-		flag.Usage()
-		return
-	}
+func StartWireProxyServer(bridge_address string) {
 
 	cfg, err := ini.Load(*wg_conf_path)
 	if err != nil {
-		log.Panic(err)
+		log.Println("--- Cannot load wireguard config file ---")
+		log.Fatal(err)
 	}
 
-	setting, err := createIPCRequest(cfg)
-	if err != nil {
-		log.Panic(err)
-	}
+	setting := CreateIPCRequest(cfg)
+	tnet := StartWireguardClient(setting)
+	StartSocksServer(bridge_address, tnet)
+}
 
-	tnet, err := startWireguardClient(setting)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	go func() {
-		err = startSocks5Server("0.0.0.0:2080", tnet)
-		if err != nil {
-			log.Panic(err)
-		}
-
-	}()
-	// Start here
+func StartFanSocksServer() {
 	var t []proxy.Dialer
-	f, err := os.ReadFile(*csvfilepath)
+	f, err := os.ReadFile(*proxy_csv_path)
 	if err != nil {
-		fmt.Println("----------------")
-		fmt.Println("CSV file read error")
-		fmt.Println("----------------")
-		panic(err)
+		log.Println("--- Cannot load proxy socks csv file ---")
+		log.Fatal(err)
 	}
 	sockstrings := bytes.Split(f, []byte("\n"))
 
-	middle, _ := proxy.SOCKS5("tcp", "127.0.0.1:2080", &proxy.Auth{}, proxy.Direct)
+	var b proxy.Dialer
+	if *no_wire {
+		b = nil
+	} else {
+		b, _ = proxy.SOCKS5("tcp", *bridge, &proxy.Auth{}, proxy.Direct)
+		if err != nil {
+			log.Println("--- Cannot connect to bridge ---")
+			log.Fatal(err)
+		}
+	}
 
 	for _, i := range sockstrings {
-		j, _ := proxy.SOCKS5("tcp", string(i), &proxy.Auth{}, middle)
+		j, err := proxy.SOCKS5("tcp", string(i), &proxy.Auth{}, b)
+		if err != nil {
+			log.Println("--- Cannot connect to proxy ---")
+			log.Println(err)
+		}
 		t = append(t, j)
 	}
 
@@ -247,10 +220,48 @@ func main() {
 			return t[i].Dial(network, addr)
 		},
 	})
-	if err := server.ListenAndServe("tcp", *bindAddr); err != nil {
-		fmt.Println("----------------")
-		fmt.Println("SOCKS5 server cannot be started at : ", *bindAddr)
-		fmt.Println("----------------")
-		panic(err)
+	err = server.ListenAndServe("tcp", *bind)
+	if err != nil {
+		log.Printf("--- SOCKS5 server cannot be started at : %s ---", *bind)
+		log.Fatal(err)
+	}
+}
+
+var (
+	no_wire        = flag.Bool("no-wire", false, "No Wire")
+	no_fan         = flag.Bool("no-fan", false, "No fan")
+	bridge         = flag.String("bg", "0.0.0.0:8080", "Bridge address between wire and fan")
+	bind           = flag.String("bind", "0.0.0.0:1080", "Bind address/Server listen address")
+	wg_conf_path   = flag.String("wg-conf", "", "Wireguard config file path")
+	proxy_csv_path = flag.String("csv", "socks.csv", "SOCKS5 server list csv file")
+	user           = flag.String("user", "", "SOCKS5 Username")
+	pass           = flag.String("pass", "", "SOCKS5 Password")
+)
+
+func main() {
+	flag.Parse()
+
+	if *no_fan && *no_wire {
+		log.Printf("--- Server is starting at %s---\n", *bind)
+		StartSocksServer(*bind, nil)
+		return
+
+	} else if *no_fan {
+		log.Printf("--- Server is starting at %s---\n", *bind)
+		StartWireProxyServer(*bind)
+		return
+
+	} else if *no_wire {
+		log.Printf("--- Server is starting at %s---\n", *bind)
+		StartFanSocksServer()
+		return
+	} else {
+
+		log.Printf("--- Bridge is starting at %s---\n", *bridge)
+		go func() { StartWireProxyServer(*bridge) }()
+
+		log.Printf("--- Server is starting at %s---\n", *bind)
+		StartFanSocksServer()
+		return
 	}
 }
