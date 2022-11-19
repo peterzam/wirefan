@@ -183,6 +183,7 @@ func StartWireProxyServer(bridge_address string) {
 }
 
 func StartFanSocksServer() {
+
 	var t []proxy.Dialer
 	f, err := os.ReadFile(*proxy_csv_path)
 	if err != nil {
@@ -195,7 +196,7 @@ func StartFanSocksServer() {
 	if *no_wire {
 		b = nil
 	} else {
-		b, _ = proxy.SOCKS5("tcp", *bridge, &proxy.Auth{}, proxy.Direct)
+		b, _ = proxy.SOCKS5("tcp", *bridge, &proxy.Auth{*user, *pass}, proxy.Direct)
 		if err != nil {
 			log.Println("--- Cannot connect to bridge ---")
 			log.Fatal(err)
@@ -211,6 +212,16 @@ func StartFanSocksServer() {
 		t = append(t, j)
 	}
 
+	var auth []socks5.Authenticator
+
+	if *user != "" {
+		auth = []socks5.Authenticator{socks5.UserPassAuthenticator{
+			Credentials: socks5.StaticCredentials{
+				*user: *pass,
+			},
+		}}
+	}
+
 	var i int
 	server, _ := socks5.New(&socks5.Config{
 		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -219,6 +230,7 @@ func StartFanSocksServer() {
 			}
 			return t[i].Dial(network, addr)
 		},
+		AuthMethods: auth,
 	})
 	err = server.ListenAndServe("tcp", *bind)
 	if err != nil {
