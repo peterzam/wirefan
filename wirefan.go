@@ -115,9 +115,14 @@ func createIPCRequest(cfg *ini.File) (*DeviceSetting, error) {
 
 	keepAlive := cfg.Section("Peer").Key("PersistentKeepalive").MustInt64(0)
 
-	preSharedKey, err := parseBase64Key(cfg.Section("Peer").Key("PresharedKey").MustString(strings.Repeat("0", 64)))
-	if err != nil {
-		return nil, err
+	var preSharedKey = cfg.Section("Peer").Key("PresharedKey").String()
+	if preSharedKey == "" {
+		preSharedKey = strings.Repeat("0", 64)
+	} else {
+		preSharedKey, err = parseBase64Key(preSharedKey)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	request := fmt.Sprintf(`private_key=%s
