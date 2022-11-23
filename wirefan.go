@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -29,6 +30,39 @@ type DeviceSetting struct {
 	Dns           []netip.Addr
 	Mtu           int
 	DeviceAddress *[]netip.Addr
+}
+type Tnet struct {
+	*netstack.Net
+}
+
+func (tnet Tnet) Resolve(ctx context.Context, name string) (context.Context, net.IP, error) {
+	addrs, err := tnet.LookupContextHost(ctx, name)
+
+	if err != nil {
+		return ctx, nil, err
+	}
+
+	size := len(addrs)
+	if size == 0 {
+		return ctx, nil, errors.New("no address found for: " + name)
+	}
+
+	rand.Shuffle(size, func(i, j int) {
+		addrs[i], addrs[j] = addrs[j], addrs[i]
+	})
+
+	var addr netip.Addr
+	for _, saddr := range addrs {
+		addr, err = netip.ParseAddr(saddr)
+		if err == nil {
+			break
+		}
+	}
+
+	if err != nil {
+		return ctx, nil, err
+	}
+	return ctx, addr.AsSlice(), nil
 }
 
 func ParseBase64Key(key string) string {
@@ -137,7 +171,7 @@ func StartWireguardClient(setting *DeviceSetting) *netstack.Net {
 	return tnet
 }
 
-func StartSocksServer(server_address string, tnet *netstack.Net) {
+func StartSocksServer(server_address string, tnet Tnet) {
 	var auth []socks5.Authenticator
 
 	if *user != "" {
@@ -154,12 +188,13 @@ func StartSocksServer(server_address string, tnet *netstack.Net) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if tnet != nil {
+	if tnet.Net != nil {
 		server, _ = socks5.New(&socks5.Config{
 			Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				return tnet.DialContext(ctx, network, addr)
 			},
 			AuthMethods: auth,
+			Resolver:    tnet,
 		})
 	}
 
@@ -178,7 +213,8 @@ func StartWireProxyServer(bridge_address string) {
 	}
 
 	setting := CreateIPCRequest(cfg)
-	tnet := StartWireguardClient(setting)
+	var tnet Tnet
+	tnet.Net = StartWireguardClient(setting)
 	StartSocksServer(bridge_address, tnet)
 }
 
@@ -255,7 +291,7 @@ func main() {
 
 	if *no_fan && *no_wire {
 		log.Printf("--- Server is starting at %s---\n", *bind)
-		StartSocksServer(*bind, nil)
+		StartSocksServer(*bind, Tnet{})
 		return
 
 	} else if *no_fan {
