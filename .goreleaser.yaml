@@ -24,3 +24,5 @@ changelog:
     exclude:
       - '^docs:'
       - '^test:'
+gitea_urls:
+  api: https://codeberg.org/api/v1
