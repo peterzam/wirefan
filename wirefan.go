@@ -218,10 +218,10 @@ func StartWireProxyServer(bridge_address string) {
 	StartSocksServer(bridge_address, tnet)
 }
 
-func StartFanSocksServer() {
+func StartFanSocksServer(path string) {
 
 	var t []proxy.Dialer
-	f, err := os.ReadFile(*proxy_csv_path)
+	f, err := os.ReadFile(path)
 	if err != nil {
 		log.Println("--- Cannot load proxy socks csv file ---")
 		log.Fatal(err)
@@ -275,6 +275,10 @@ func StartFanSocksServer() {
 	}
 }
 
+func StartWirefanServer() {
+
+}
+
 var (
 	no_wire        = flag.Bool("no-wire", false, "No Wire")
 	no_fan         = flag.Bool("no-fan", false, "No fan")
@@ -301,7 +305,7 @@ func main() {
 
 	} else if *no_wire {
 		log.Printf("--- Server is starting at %s---\n", *bind)
-		StartFanSocksServer()
+		StartFanSocksServer(*proxy_csv_path)
 		return
 	} else {
 
@@ -309,7 +313,7 @@ func main() {
 		go func() { StartWireProxyServer(*bridge) }()
 
 		log.Printf("--- Server is starting at %s---\n", *bind)
-		StartFanSocksServer()
+		StartFanSocksServer(*proxy_csv_path)
 		return
 	}
 }
