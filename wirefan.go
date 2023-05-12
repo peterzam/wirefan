@@ -203,7 +203,12 @@ func StartSocksServer(cred proxy.Auth, bind_address string, tnet Tnet) error {
 		return fmt.Errorf("--- Error: Cannot create socks5 server with config ---\n%v", err)
 	}
 
-	if err := server.ListenAndServe("tcp", bind_address); err != nil {
+	protocol := "unix"
+	if strings.ContainsAny(bind_address, ":") {
+		protocol = "tcp"
+	}
+
+	if err := server.ListenAndServe(protocol, bind_address); err != nil {
 		return fmt.Errorf("--- Error: Cannot listen socks5 server at %s ---\n%v", bind_address, err)
 	}
 
@@ -277,7 +282,12 @@ func StartFanProxyServer(cred proxy.Auth, bind_address, proxyconf_path string, t
 		return fmt.Errorf("--- Error: Cannot create fanproxy server with config---\n%v", err)
 	}
 
-	if err := server.ListenAndServe("tcp", bind_address); err != nil {
+	protocol := "unix"
+	if strings.ContainsAny(bind_address, ":") {
+		protocol = "tcp"
+	}
+
+	if err := server.ListenAndServe(protocol, bind_address); err != nil {
 		return fmt.Errorf("--- Error: Cannot listen fanproxy server at %s ---\n%v", bind_address, err)
 	}
 
@@ -285,7 +295,7 @@ func StartFanProxyServer(cred proxy.Auth, bind_address, proxyconf_path string, t
 }
 
 var (
-	bind_address   = flag.String("bind", "0.0.0.0:1080", "Bind address/Server listen address")
+	bind_address   = flag.String("bind", "0.0.0.0:1080", "Bind address/Server listen address (also supports unix socket)")
 	wgconf_path    = flag.String("wg-conf", "wg.conf", "Wireguard config file path")
 	proxyconf_path = flag.String("socks-conf", "socks.conf", "SOCKS5 servers list file")
 	user           = flag.String("user", "", "SOCKS5 Username")

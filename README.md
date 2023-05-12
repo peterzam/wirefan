@@ -6,8 +6,8 @@ This software only support SOCKS5 proxy. If you want to use HTTP proxy, convert 
 
 
 # Why you might want this
-- You simply want wireguard as a way to proxy some traffic
-- You don't want root permissions or new virtual tun/tap adapter just to use/test wireguard
+- Want wireguard as a way to proxy some traffic
+- Don't want root permissions or new virtual tun/tap adapter to use/test wireguard
 - Rotate socks5 proxies within wireguard network (Mullvad, IVPN, ProtonvVPN and many support this type of Multi-hop proxy)
 
 # Usage
@@ -15,22 +15,18 @@ This software only support SOCKS5 proxy. If you want to use HTTP proxy, convert 
 ## CLI
 ```
 ./wirefan 
-  -bg string
-        Bridge address between wire and fan (default "0.0.0.0:8080")
   -bind string
-        Bind address/Server listen address (default "0.0.0.0:1080")
-  -csv string
-        SOCKS5 server list csv file (default "socks.csv")
-  -no-fan
-        No fan
-  -no-wire
-        No Wire
+        Bind address/Server listen address (also supports unix socket) (default "0.0.0.0:1080")
+  -mode string
+        Modes - wire(wire only), fan(fan only), socks(socks only), wirefan (default "wirefan")
   -pass string
         SOCKS5 Password
+  -socks-conf string
+        SOCKS5 servers list file (default "socks.conf")
   -user string
         SOCKS5 Username
   -wg-conf string
-        Wireguard config file path
+        Wireguard config file path (default "wg.conf")
 ```
 
 ## Docker 
@@ -44,7 +40,7 @@ cd wirefan
 docker build -t peterzam/wirefan .
 
 # Run Docker Container
-docker run -d -v <wireguard_config_file_path>:/wg.conf -v <socks address list>:/socks.csv -p 1080:1080 peterzam/wirefan --user=<username> --pass=<password> --wg-conf=/wg.conf --csv=/socks.csv
+docker run -d -v <wireguard_config_file_path>:/wg.conf -v <socks address list>:/socks.csv -p 1080:1080 peterzam/wirefan --user=<username> --pass=<password> --wg-conf=/wg.conf --socks-conf=/socks.csv
 ```
 # Example
 
@@ -68,34 +64,31 @@ au3-wg.socks5.relays.mullvad.net:1080
 au4-wg.socks5.relays.mullvad.net:1080
 ```
 ---
-# Possible Modes
+# Modes
 
-## wireproxy + fansocks
-Simple. No extra command flags.  
+## wirefan = wireproxy + fansocks
 
-```./wirefan --wg-conf=<wireguard config> --csv=<socks list csv>```  
+```./wirefan --wg-conf=<wireguard config> --socks-conf=<socks list csv>```  
 
 ***TL;DR:*** Connect the wireguard, rotate the multihop, can connect at `bind` address.  
 
 First, wirefan connect the VPN server with wireguard, listen traffic with socks5 server at ***bridge***, fansocks client connect the bridge, rotate the connections, open a new socks5 server at ***bind*** where the client can access.
 
 ---
-## wireproxy + no fansocks
-Simple. No extra command flags.  
+
+## wire = wireproxy + no fansocks  
 
 ```./wirefan --wg-conf=<wireguard config> --no-fan```
 Just connect to wireguard. Same function as [wireproxy](https://github.com/octeep/wireproxy)
 
 ---
-## no wireproxy + fansocks
-Simple. No extra command flags.  
+## fan = no wireproxy + fansocks
 
-```./wirefan --csv=<socks list csv> --no-wire```
+```./wirefan --socks-conf=<socks list csv> --no-wire```
 Just randomize the socks connections. Same function as [fansocks](https://codeberg.org/peterzam/fansocks)
 
 ---
-### no wireproxy + no fansocks
-Simple. No extra command flags.  
+### socks = no wireproxy + no fansocks
 
 ```./wirefan --no-wire  --no-fan```
 Plain socks5 server. Proxy from the running host.
